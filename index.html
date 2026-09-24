@@ -206,8 +206,8 @@
 
       <form id="form-bean" class="space-y-3 bg-zinc-900 border border-zinc-800 rounded-lg p-4 hidden">
         <h3 class="text-sm font-semibold text-zinc-300">New Bean Entry</h3>
-        <input type="text" id="bean-name" placeholder="Bean Name (e.g. Karadibetta Estate)" class="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-xs" required>
-        <input type="text" id="bean-roaster" placeholder="Roaster (e.g. Blue Tokai)" class="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-xs" required>
+        <input type="text" id="bean-name" placeholder="Bean Name (e.g. Whiskey Barrel No.9 Aged Coffee)" class="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-xs" required>
+        <input type="text" id="bean-roaster" placeholder="Roaster (e.g. Fraction 9)" class="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-xs" required>
         <div class="grid grid-cols-2 gap-2">
           <div>
             <label class="block text-[10px] text-zinc-400 mb-1">Roast Date</label>
@@ -224,6 +224,10 @@
             </select>
           </div>
         </div>
+        <div>
+          <label class="block text-[10px] text-zinc-400 mb-1">Date of First Brew</label>
+          <input type="date" id="bean-first-brew-date" class="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-xs">
+        </div>
         <div class="flex gap-2">
           <button type="submit" class="flex-1 bg-amber-600 text-zinc-950 font-bold py-2 rounded text-xs">Save Bean</button>
           <button type="button" id="btn-cancel-bean" class="bg-zinc-800 text-zinc-400 font-bold px-3 py-2 rounded text-xs">Cancel</button>
@@ -231,7 +235,7 @@
       </form>
 
       <div id="beans-list" class="space-y-3">
-        <!-- Rendered Beans -->
+        <!-- Rendered Bean Cards with Expandable Weekly Ratings -->
       </div>
     </section>
 
@@ -368,7 +372,6 @@
       poursContainer.appendChild(row);
     }
 
-    // Default initial pour rows
     addPourRow(50, 'Bloom', '0:00');
     addPourRow(60, 'Spiral', '0:30');
 
@@ -402,10 +405,14 @@
         if (countGear.result === 0) {
           const addTx = db.transaction(['beans', 'gear'], 'readwrite');
           addTx.objectStore('beans').add({
-            name: 'House Blend',
-            roaster: 'Default Roaster',
-            roastDate: new Date().toISOString().split('T')[0],
-            roastLevel: 'Medium'
+            name: 'Whiskey Barrel No.9 Aged Coffee',
+            roaster: 'Fraction 9',
+            roastDate: '2026-08-13',
+            roastLevel: 'Medium-Dark',
+            firstBrewDate: '2026-08-20',
+            week1Rating: 7,
+            week2Rating: 9,
+            week3Rating: 8
           });
           addTx.objectStore('gear').add({ name: 'V60 Pour Over', type: 'Brewer' });
           addTx.objectStore('gear').add({ name: 'AeroPress', type: 'Brewer' });
@@ -436,18 +443,16 @@
     function loadFormDropdowns() {
       const tx = db.transaction(['beans', 'gear'], 'readonly');
 
-      // Populate Beans
       tx.objectStore('beans').getAll().onsuccess = (e) => {
         const select = document.getElementById('brew-bean');
         const currentVal = select.value;
         select.innerHTML = '<option value="">Select Bean...</option>';
         e.target.result.forEach(bean => {
-          const nameStr = `${bean.name} (${bean.roaster})`;
-          select.innerHTML += `<option value="${nameStr}" ${currentVal === nameStr ? 'selected' : ''}>${bean.name} - ${bean.roaster}</option>`;
+          const nameStr = `${bean.name} - ${bean.roaster}`;
+          select.innerHTML += `<option value="${nameStr}" ${currentVal === nameStr ? 'selected' : ''}>${bean.name} (${bean.roaster})</option>`;
         });
       };
 
-      // Populate Gear (Brewers & Grinders)
       tx.objectStore('gear').getAll().onsuccess = (e) => {
         const brewerSelect = document.getElementById('brew-equipment');
         const grinderSelect = document.getElementById('brew-grinder');
@@ -518,7 +523,11 @@
         name: document.getElementById('bean-name').value,
         roaster: document.getElementById('bean-roaster').value,
         roastDate: document.getElementById('bean-roast-date').value,
-        roastLevel: document.getElementById('bean-roast-level').value
+        roastLevel: document.getElementById('bean-roast-level').value,
+        firstBrewDate: document.getElementById('bean-first-brew-date').value || '',
+        week1Rating: 5,
+        week2Rating: 5,
+        week3Rating: 5
       };
       const tx = db.transaction('beans', 'readwrite');
       tx.objectStore('beans').add(newBean);
@@ -529,6 +538,25 @@
         loadFormDropdowns();
       };
     });
+
+    function toggleBeanDetails(id) {
+      const detailsEl = document.getElementById(`bean-details-${id}`);
+      if (detailsEl) {
+        detailsEl.classList.toggle('hidden');
+      }
+    }
+
+    function updateBeanData(id, key, value) {
+      const tx = db.transaction('beans', 'readwrite');
+      const store = tx.objectStore('beans');
+      store.get(id).onsuccess = (e) => {
+        const bean = e.target.result;
+        if (bean) {
+          bean[key] = value;
+          store.put(bean);
+        }
+      };
+    }
 
     function renderBeans() {
       const tx = db.transaction('beans', 'readonly');
@@ -541,17 +569,80 @@
           const roast = new Date(bean.roastDate);
           const now = new Date();
           const restDays = Math.floor((now - roast) / (1000 * 60 * 60 * 24));
+          const week1 = bean.week1Rating || 5;
+          const week2 = bean.week2Rating || 5;
+          const week3 = bean.week3Rating || 5;
+
           container.innerHTML += `
-            <div class="bg-zinc-900 border border-zinc-800 rounded-lg p-3 flex justify-between items-center">
-              <div>
-                <div class="text-xs uppercase font-bold text-zinc-500">${bean.roaster}</div>
-                <div class="font-bold text-sm text-amber-400">${bean.name}</div>
-                <div class="text-[11px] text-zinc-400 mt-1 flex items-center gap-2">
-                  <span>🗓️ ${bean.roastDate}</span>
-                  <span class="bg-amber-950 text-amber-300 border border-amber-800 px-1.5 py-0.5 rounded font-mono">${restDays} days rest</span>
+            <div class="bg-zinc-900 border border-zinc-800 rounded-lg p-3 space-y-3">
+              <div class="flex justify-between items-start cursor-pointer" onclick="toggleBeanDetails(${bean.id})">
+                <div class="space-y-1">
+                  <div class="text-[10px] uppercase font-bold text-zinc-500 tracking-wider">${bean.roaster}</div>
+                  <div class="font-bold text-sm text-amber-500">${bean.name}</div>
+                  <div class="text-[11px] text-zinc-400 flex items-center gap-2 pt-0.5">
+                    <span>🗓️ ${bean.roastDate}</span>
+                    <span class="bg-amber-950/80 text-amber-400 border border-amber-800/80 px-1.5 py-0.5 rounded text-[10px] font-mono">${restDays} days rest</span>
+                  </div>
                 </div>
+                <button onclick="event.stopPropagation(); deleteEntry('beans', ${bean.id})" class="text-zinc-600 hover:text-red-400 p-1">🗑️</button>
               </div>
-              <button onclick="deleteEntry('beans', ${bean.id})" class="text-zinc-600 hover:text-red-400">🗑️</button>
+
+              <!-- Clickable Expanded Section -->
+              <div id="bean-details-${bean.id}" class="hidden pt-3 border-t border-zinc-800/80 space-y-3">
+                
+                <div class="grid grid-cols-2 gap-2 text-xs">
+                  <div class="bg-zinc-950 p-2 rounded border border-zinc-800/60">
+                    <span class="text-zinc-500 block text-[10px] uppercase font-semibold">Roast Profile</span>
+                    <span class="text-zinc-200 font-medium">${bean.roastLevel || 'Medium'}</span>
+                  </div>
+                  <div class="bg-zinc-950 p-2 rounded border border-zinc-800/60">
+                    <span class="text-zinc-500 block text-[10px] uppercase font-semibold">First Brew Date</span>
+                    <input type="date" value="${bean.firstBrewDate || ''}" 
+                           onchange="updateBeanData(${bean.id}, 'firstBrewDate', this.value)"
+                           class="bg-transparent text-amber-400 text-xs focus:outline-none w-full">
+                  </div>
+                </div>
+
+                <!-- 3 Weekly Progression Rating Bars -->
+                <div class="bg-zinc-950 p-3 rounded-lg border border-zinc-800/60 space-y-3">
+                  <div class="text-[11px] font-semibold text-zinc-400 uppercase tracking-wider">Weekly Rating Progression (1 - 10)</div>
+                  
+                  <!-- 1st Week -->
+                  <div class="space-y-1">
+                    <div class="flex justify-between text-xs text-zinc-300">
+                      <span>1st Week</span>
+                      <span id="val-w1-${bean.id}" class="font-mono text-amber-400 font-bold">${week1}/10</span>
+                    </div>
+                    <input type="range" min="1" max="10" value="${week1}" 
+                           oninput="document.getElementById('val-w1-${bean.id}').innerText = this.value + '/10'; updateBeanData(${bean.id}, 'week1Rating', parseInt(this.value))"
+                           class="w-full accent-amber-500 bg-zinc-800 h-1.5 rounded-lg appearance-none cursor-pointer">
+                  </div>
+
+                  <!-- 2nd Week -->
+                  <div class="space-y-1">
+                    <div class="flex justify-between text-xs text-zinc-300">
+                      <span>2nd Week</span>
+                      <span id="val-w2-${bean.id}" class="font-mono text-amber-400 font-bold">${week2}/10</span>
+                    </div>
+                    <input type="range" min="1" max="10" value="${week2}" 
+                           oninput="document.getElementById('val-w2-${bean.id}').innerText = this.value + '/10'; updateBeanData(${bean.id}, 'week2Rating', parseInt(this.value))"
+                           class="w-full accent-amber-500 bg-zinc-800 h-1.5 rounded-lg appearance-none cursor-pointer">
+                  </div>
+
+                  <!-- 3rd Week -->
+                  <div class="space-y-1">
+                    <div class="flex justify-between text-xs text-zinc-300">
+                      <span>3rd Week</span>
+                      <span id="val-w3-${bean.id}" class="font-mono text-amber-400 font-bold">${week3}/10</span>
+                    </div>
+                    <input type="range" min="1" max="10" value="${week3}" 
+                           oninput="document.getElementById('val-w3-${bean.id}').innerText = this.value + '/10'; updateBeanData(${bean.id}, 'week3Rating', parseInt(this.value))"
+                           class="w-full accent-amber-500 bg-zinc-800 h-1.5 rounded-lg appearance-none cursor-pointer">
+                  </div>
+
+                </div>
+
+              </div>
             </div>
           `;
         });
