@@ -1,0 +1,749 @@
+<!DOCTYPE html>
+<html lang="en" class="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>BrewLog - Coffee Tracker</title>
+  
+  <!-- PWA Meta Tags -->
+  <meta name="theme-color" content="#09090b">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="BrewLog">
+  
+  <!-- Tailwind CSS CDN -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      darkMode: 'class',
+      theme: {
+        extend: {
+          colors: {
+            brand: {
+              50: '#fffbeb', 100: '#fef3c7', 500: '#f59e0b', 600: '#d97706', 700: '#b45309', 900: '#78350f'
+            }
+          }
+        }
+      }
+    }
+  </script>
+
+  <!-- Dynamic Web Manifest for PWA installation -->
+  <script>
+    const manifest = {
+      name: "BrewLog Mobile",
+      short_name: "BrewLog",
+      start_url: ".",
+      display: "standalone",
+      background_color: "#09090b",
+      theme_color: "#09090b",
+      icons: [{
+        src: "data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>☕</text></svg>",
+        sizes: "192x192 512x512",
+        type: "image/svg+xml"
+      }]
+    };
+    const stringManifest = JSON.stringify(manifest);
+    const blob = new Blob([stringManifest], {type: 'application/json'});
+    const manifestURL = URL.createObjectURL(blob);
+    const manifestLink = document.createElement('link');
+    manifestLink.rel = 'manifest';
+    manifestLink.href = manifestURL;
+    document.head.appendChild(manifestLink);
+  </script>
+</head>
+<body class="bg-zinc-950 text-zinc-100 min-h-screen pb-24 font-sans antialiased selection:bg-brand-500 selection:text-zinc-950">
+
+  <!-- Header -->
+  <header class="sticky top-0 z-40 bg-zinc-900/80 backdrop-blur-md border-b border-zinc-800 px-4 py-3 flex items-center justify-between">
+    <div class="flex items-center gap-2">
+      <span class="text-2xl">☕</span>
+      <h1 class="font-bold text-lg tracking-tight bg-gradient-to-r from-brand-500 to-amber-200 bg-clip-text text-transparent">BrewLog</h1>
+    </div>
+    <span class="text-xs px-2 py-1 rounded-full bg-zinc-800 border border-zinc-700 text-zinc-400 font-mono" id="storage-status">IndexedDB Ready</span>
+  </header>
+
+  <main class="max-w-md mx-auto px-4 pt-4">
+
+    <!-- TAB 1: BREW LOGGER -->
+    <section id="tab-log" class="tab-content space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-xl font-bold text-zinc-100">Log a Brew</h2>
+        <span class="text-xs text-zinc-400" id="current-date-display"></span>
+      </div>
+
+      <form id="form-brew" class="space-y-4 bg-zinc-900/60 p-4 rounded-xl border border-zinc-800/80">
+        <!-- Bean Selector -->
+        <div>
+          <label class="block text-xs font-semibold uppercase text-zinc-400 mb-1">Coffee Bean</label>
+          <select id="brew-bean" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2.5 text-sm text-zinc-100 focus:ring-2 focus:ring-brand-500 focus:outline-none">
+            <!-- Dynamically populated -->
+          </select>
+        </div>
+
+        <!-- Equipment Selectors -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold uppercase text-zinc-400 mb-1">Brewer</label>
+            <select id="brew-brewer" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2.5 text-sm text-zinc-100 focus:ring-2 focus:ring-brand-500 focus:outline-none">
+              <!-- Dynamically populated -->
+            </select>
+          </div>
+          <div>
+            <label class="block text-xs font-semibold uppercase text-zinc-400 mb-1">Grinder</label>
+            <select id="brew-grinder" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2.5 text-sm text-zinc-100 focus:ring-2 focus:ring-brand-500 focus:outline-none">
+              <!-- Dynamically populated -->
+            </select>
+          </div>
+        </div>
+
+        <!-- Dose, Water & Ratio -->
+        <div class="grid grid-cols-3 gap-3">
+          <div>
+            <label class="block text-xs font-semibold uppercase text-zinc-400 mb-1">Dose (g)</label>
+            <input type="number" id="brew-dose" step="0.1" placeholder="18" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2.5 text-sm text-zinc-100 focus:ring-2 focus:ring-brand-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold uppercase text-zinc-400 mb-1">Water (g)</label>
+            <input type="number" id="brew-water" step="1" placeholder="300" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2.5 text-sm text-zinc-100 focus:ring-2 focus:ring-brand-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold uppercase text-zinc-400 mb-1">Ratio</label>
+            <div id="brew-ratio" class="w-full bg-zinc-800/50 border border-zinc-700/50 rounded-lg p-2.5 text-sm font-mono text-brand-500 font-bold text-center">
+              1:-
+            </div>
+          </div>
+        </div>
+
+        <!-- Grind Size & Temperature -->
+        <div class="grid grid-cols-2 gap-3">
+          <div>
+            <label class="block text-xs font-semibold uppercase text-zinc-400 mb-1">Grind Setting</label>
+            <input type="text" id="brew-grind" placeholder="e.g. 15 clicks / Medium" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2.5 text-sm text-zinc-100 focus:ring-2 focus:ring-brand-500 focus:outline-none">
+          </div>
+          <div>
+            <label class="block text-xs font-semibold uppercase text-zinc-400 mb-1">Temp (°C)</label>
+            <input type="number" id="brew-temp" step="0.5" placeholder="93" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2.5 text-sm text-zinc-100 focus:ring-2 focus:ring-brand-500 focus:outline-none">
+          </div>
+        </div>
+
+        <!-- Interactive 5-Star Rating -->
+        <div>
+          <label class="block text-xs font-semibold uppercase text-zinc-400 mb-1">Rating</label>
+          <div class="flex items-center gap-2" id="star-rating-container">
+            <div class="flex text-2xl cursor-pointer text-zinc-600 gap-1" id="star-rating">
+              <span data-value="1">★</span>
+              <span data-value="2">★</span>
+              <span data-value="3">★</span>
+              <span data-value="4">★</span>
+              <span data-value="5">★</span>
+            </div>
+            <span class="text-xs text-zinc-400 font-mono" id="rating-label">0/5</span>
+          </div>
+          <input type="hidden" id="brew-rating" value="0">
+        </div>
+
+        <!-- Tasting Notes -->
+        <div>
+          <label class="block text-xs font-semibold uppercase text-zinc-400 mb-1">Tasting Notes</label>
+          <textarea id="brew-notes" rows="3" placeholder="Bright acidity, jasmine floral notes, clean finish..." class="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2.5 text-sm text-zinc-100 focus:ring-2 focus:ring-brand-500 focus:outline-none"></textarea>
+        </div>
+
+        <button type="submit" class="w-full bg-brand-600 hover:bg-brand-500 text-zinc-950 font-bold py-3 rounded-lg transition-all shadow-lg shadow-brand-900/30 active:scale-[0.98]">
+          Save Brew Log
+        </button>
+      </form>
+    </section>
+
+    <!-- TAB 2: BREW HISTORY -->
+    <section id="tab-history" class="tab-content hidden space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-xl font-bold text-zinc-100">Brew History</h2>
+        <span class="text-xs font-mono text-zinc-400" id="history-count">0 logs</span>
+      </div>
+
+      <!-- Search and Filter Bar -->
+      <div class="space-y-2">
+        <input type="text" id="search-history" placeholder="🔍 Search notes, beans, roaster..." class="w-full bg-zinc-900 border border-zinc-800 rounded-lg px-3 py-2 text-sm text-zinc-100 focus:outline-none focus:ring-2 focus:ring-brand-500">
+      </div>
+
+      <!-- History Cards Container -->
+      <div id="history-list" class="space-y-3">
+        <!-- Dynamically populated -->
+      </div>
+    </section>
+
+    <!-- TAB 3: BEANS CATALOG -->
+    <section id="tab-beans" class="tab-content hidden space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-xl font-bold text-zinc-100">Beans Catalog</h2>
+        <button id="btn-toggle-bean-form" class="text-xs bg-brand-600 text-zinc-950 font-bold px-3 py-1.5 rounded-lg">
+          + Add Bean
+        </button>
+      </div>
+
+      <!-- Add Bean Form -->
+      <form id="form-bean" class="hidden space-y-3 bg-zinc-900/80 p-4 rounded-xl border border-zinc-800">
+        <h3 class="text-sm font-semibold text-brand-500">New Bean Entry</h3>
+        <div>
+          <label class="block text-xs uppercase text-zinc-400 mb-1">Roaster</label>
+          <input type="text" id="bean-roaster" required placeholder="e.g. Onyx Coffee Lab" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm">
+        </div>
+        <div>
+          <label class="block text-xs uppercase text-zinc-400 mb-1">Bean Name / Origin</label>
+          <input type="text" id="bean-name" required placeholder="e.g. Southern Weather / Ethiopia Yirgacheffe" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm">
+        </div>
+        <div>
+          <label class="block text-xs uppercase text-zinc-400 mb-1">Roast Date</label>
+          <input type="date" id="bean-roast-date" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm text-zinc-100">
+        </div>
+        <div class="flex gap-2 pt-1">
+          <button type="submit" class="flex-1 bg-brand-600 text-zinc-950 font-bold py-2 rounded-lg text-sm">Save Bean</button>
+          <button type="button" id="btn-cancel-bean" class="px-4 bg-zinc-800 text-zinc-300 py-2 rounded-lg text-sm">Cancel</button>
+        </div>
+      </form>
+
+      <div id="beans-list" class="space-y-3">
+        <!-- Dynamically populated -->
+      </div>
+    </section>
+
+    <!-- TAB 4: EQUIPMENT LIST -->
+    <section id="tab-equipment" class="tab-content hidden space-y-4">
+      <div class="flex justify-between items-center">
+        <h2 class="text-xl font-bold text-zinc-100">Equipment</h2>
+        <button id="btn-toggle-equip-form" class="text-xs bg-brand-600 text-zinc-950 font-bold px-3 py-1.5 rounded-lg">
+          + Add Gear
+        </button>
+      </div>
+
+      <!-- Add Equipment Form -->
+      <form id="form-equip" class="hidden space-y-3 bg-zinc-900/80 p-4 rounded-xl border border-zinc-800">
+        <h3 class="text-sm font-semibold text-brand-500">New Equipment Entry</h3>
+        <div>
+          <label class="block text-xs uppercase text-zinc-400 mb-1">Equipment Name</label>
+          <input type="text" id="equip-name" required placeholder="e.g. V60 02 / Comandante C40 / Fellow Stagg" class="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm">
+        </div>
+        <div>
+          <label class="block text-xs uppercase text-zinc-400 mb-1">Category</label>
+          <select id="equip-type" required class="w-full bg-zinc-800 border border-zinc-700 rounded-lg p-2 text-sm text-zinc-100">
+            <option value="Brewer">Brewer</option>
+            <option value="Grinder">Grinder</option>
+            <option value="Kettle">Kettle</option>
+            <option value="Scale">Scale / Accessory</option>
+          </select>
+        </div>
+        <div class="flex gap-2 pt-1">
+          <button type="submit" class="flex-1 bg-brand-600 text-zinc-950 font-bold py-2 rounded-lg text-sm">Save Equipment</button>
+          <button type="button" id="btn-cancel-equip" class="px-4 bg-zinc-800 text-zinc-300 py-2 rounded-lg text-sm">Cancel</button>
+        </div>
+      </form>
+
+      <div id="equip-list" class="space-y-3">
+        <!-- Dynamically populated -->
+      </div>
+    </section>
+
+    <!-- TAB 5: BACKUP & DATA -->
+    <section id="tab-data" class="tab-content hidden space-y-4">
+      <h2 class="text-xl font-bold text-zinc-100">Data Management</h2>
+      <p class="text-xs text-zinc-400">Your data is stored completely offline in your device's IndexedDB. Export regular JSON backups to keep your data safe.</p>
+
+      <div class="bg-zinc-900/80 p-4 rounded-xl border border-zinc-800 space-y-4">
+        <div>
+          <h3 class="text-sm font-semibold text-zinc-200 mb-1">Export Backup</h3>
+          <p class="text-xs text-zinc-400 mb-3">Download a complete JSON file containing all your beans, equipment, and brew history.</p>
+          <button id="btn-export" class="w-full bg-zinc-800 hover:bg-zinc-700 text-brand-500 font-semibold py-2.5 rounded-lg border border-zinc-700 text-sm flex items-center justify-center gap-2">
+            <span>💾</span> Export JSON Backup
+          </button>
+        </div>
+
+        <hr class="border-zinc-800">
+
+        <div>
+          <h3 class="text-sm font-semibold text-zinc-200 mb-1">Import Backup</h3>
+          <p class="text-xs text-zinc-400 mb-3">Restore your data from a previously exported JSON backup file.</p>
+          <input type="file" id="import-file" accept=".json" class="hidden">
+          <button id="btn-import-trigger" class="w-full bg-zinc-800 hover:bg-zinc-700 text-zinc-200 font-semibold py-2.5 rounded-lg border border-zinc-700 text-sm flex items-center justify-center gap-2">
+            <span>📂</span> Import JSON File
+          </button>
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <!-- Bottom Fixed Navigation Bar -->
+  <nav class="fixed bottom-0 left-0 right-0 bg-zinc-900/90 backdrop-blur-lg border-t border-zinc-800 z-50">
+    <div class="max-w-md mx-auto flex justify-around py-2">
+      <button data-tab="tab-log" class="nav-btn active flex flex-col items-center gap-0.5 text-brand-500">
+        <span class="text-lg">☕</span>
+        <span class="text-[10px] font-medium">Brew</span>
+      </button>
+      <button data-tab="tab-history" class="nav-btn flex flex-col items-center gap-0.5 text-zinc-400 hover:text-zinc-200">
+        <span class="text-lg">📜</span>
+        <span class="text-[10px] font-medium">History</span>
+      </button>
+      <button data-tab="tab-beans" class="nav-btn flex flex-col items-center gap-0.5 text-zinc-400 hover:text-zinc-200">
+        <span class="text-lg">🫘</span>
+        <span class="text-[10px] font-medium">Beans</span>
+      </button>
+      <button data-tab="tab-equipment" class="nav-btn flex flex-col items-center gap-0.5 text-zinc-400 hover:text-zinc-200">
+        <span class="text-lg">⚙️</span>
+        <span class="text-[10px] font-medium">Gear</span>
+      </button>
+      <button data-tab="tab-data" class="nav-btn flex flex-col items-center gap-0.5 text-zinc-400 hover:text-zinc-200">
+        <span class="text-lg">💾</span>
+        <span class="text-[10px] font-medium">Data</span>
+      </button>
+    </div>
+  </nav>
+
+  <!-- Application Logic -->
+  <script>
+    // --- IndexedDB Setup ---
+    const DB_NAME = 'CoffeeLogDB';
+    const DB_VERSION = 1;
+    let db = null;
+
+    function initDB() {
+      return new Promise((resolve, reject) => {
+        const request = indexedDB.open(DB_NAME, DB_VERSION);
+
+        request.onupgradeneeded = (e) => {
+          const database = e.target.result;
+          if (!database.objectStoreNames.contains('beans')) {
+            database.createObjectStore('beans', { keyPath: 'id', autoIncrement: true });
+          }
+          if (!database.objectStoreNames.contains('equipment')) {
+            database.createObjectStore('equipment', { keyPath: 'id', autoIncrement: true });
+          }
+          if (!database.objectStoreNames.contains('brews')) {
+            database.createObjectStore('brews', { keyPath: 'id', autoIncrement: true });
+          }
+        };
+
+        request.onsuccess = (e) => {
+          db = e.target.result;
+          resolve(db);
+        };
+
+        request.onerror = (e) => reject(e.target.error);
+      });
+    }
+
+    // --- DB Helper Functions ---
+    function getAll(storeName) {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readonly');
+        const store = tx.objectStore(storeName);
+        const req = store.getAll();
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    function addRecord(storeName, record) {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+        const req = store.add(record);
+        req.onsuccess = () => resolve(req.result);
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    function deleteRecord(storeName, id) {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+        const req = store.delete(id);
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    function clearStore(storeName) {
+      return new Promise((resolve, reject) => {
+        const tx = db.transaction(storeName, 'readwrite');
+        const store = tx.objectStore(storeName);
+        const req = store.clear();
+        req.onsuccess = () => resolve();
+        req.onerror = () => reject(req.error);
+      });
+    }
+
+    // --- UI Navigation ---
+    const navButtons = document.querySelectorAll('.nav-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+
+    navButtons.forEach(btn => {
+      btn.addEventListener('click', () => {
+        const targetTab = btn.getAttribute('data-tab');
+
+        tabContents.forEach(tab => tab.classList.add('hidden'));
+        document.getElementById(targetTab).classList.remove('hidden');
+
+        navButtons.forEach(b => {
+          b.classList.remove('text-brand-500', 'active');
+          b.classList.add('text-zinc-400');
+        });
+
+        btn.classList.add('text-brand-500', 'active');
+        btn.classList.remove('text-zinc-400');
+
+        refreshAllViews();
+      });
+    });
+
+    // --- Interactive Star Rating ---
+    const starContainer = document.getElementById('star-rating');
+    const ratingInput = document.getElementById('brew-rating');
+    const ratingLabel = document.getElementById('rating-label');
+
+    starContainer.addEventListener('click', (e) => {
+      if (e.target.dataset.value) {
+        const val = parseInt(e.target.dataset.value);
+        setRating(val);
+      }
+    });
+
+    function setRating(rating) {
+      ratingInput.value = rating;
+      ratingLabel.textContent = `${rating}/5`;
+      Array.from(starContainer.children).forEach((star, idx) => {
+        if (idx < rating) {
+          star.classList.add('text-brand-500');
+          star.classList.remove('text-zinc-600');
+        } else {
+          star.classList.remove('text-brand-500');
+          star.classList.add('text-zinc-600');
+        }
+      });
+    }
+
+    // --- Dynamic Ratio Calculation ---
+    const doseInput = document.getElementById('brew-dose');
+    const waterInput = document.getElementById('brew-water');
+    const ratioDisplay = document.getElementById('brew-ratio');
+
+    function updateRatio() {
+      const dose = parseFloat(doseInput.value);
+      const water = parseFloat(waterInput.value);
+      if (dose > 0 && water > 0) {
+        const ratio = (water / dose).toFixed(1);
+        ratioDisplay.textContent = `1:${ratio}`;
+      } else {
+        ratioDisplay.textContent = '1:-';
+      }
+    }
+
+    doseInput.addEventListener('input', updateRatio);
+    waterInput.addEventListener('input', updateRatio);
+
+    // --- Calculate Days Rested ---
+    function getDaysRested(roastDateStr) {
+      if (!roastDateStr) return 'N/A';
+      const roastDate = new Date(roastDateStr);
+      const today = new Date();
+      const diffTime = today - roastDate;
+      const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
+      return diffDays < 0 ? 'Fresh roast' : `${diffDays} days rest`;
+    }
+
+    // --- Rendering Views ---
+    async function populateFormDropdowns() {
+      const beans = await getAll('beans');
+      const equip = await getAll('equipment');
+
+      const beanSelect = document.getElementById('brew-bean');
+      beanSelect.innerHTML = beans.length ? '' : '<option value="">No beans added yet</option>';
+      beans.forEach(b => {
+        beanSelect.innerHTML += `<option value="${b.roaster} - ${b.name}">${b.roaster} - ${b.name}</option>`;
+      });
+
+      const brewerSelect = document.getElementById('brew-brewer');
+      const grindersSelect = document.getElementById('brew-grinder');
+
+      const brewers = equip.filter(e => e.type === 'Brewer' || e.type === 'Kettle');
+      const grinders = equip.filter(e => e.type === 'Grinder');
+
+      brewerSelect.innerHTML = brewers.length ? '' : '<option value="Standard Brewer">Standard Brewer</option>';
+      brewers.forEach(e => {
+        brewerSelect.innerHTML += `<option value="${e.name}">${e.name}</option>`;
+      });
+
+      grindersSelect.innerHTML = grinders.length ? '<option value="None">None / Pre-ground</option>' : '<option value="Standard Grinder">Standard Grinder</option>';
+      grinders.forEach(e => {
+        grindersSelect.innerHTML += `<option value="${e.name}">${e.name}</option>`;
+      });
+    }
+
+    async function renderBeans() {
+      const beans = await getAll('beans');
+      const list = document.getElementById('beans-list');
+      if (!beans.length) {
+        list.innerHTML = `<div class="text-center py-8 text-zinc-500 text-xs">No beans recorded yet. Add your first bag above!</div>`;
+        return;
+      }
+
+      list.innerHTML = beans.map(b => `
+        <div class="bg-zinc-900/60 p-3.5 rounded-xl border border-zinc-800 flex justify-between items-center">
+          <div>
+            <div class="text-xs uppercase font-semibold text-brand-500">${escapeHtml(b.roaster)}</div>
+            <div class="text-sm font-bold text-zinc-100">${escapeHtml(b.name)}</div>
+            <div class="text-xs text-zinc-400 mt-1 flex items-center gap-2">
+              <span>📅 ${b.roastDate}</span>
+              <span class="bg-zinc-800 text-amber-300/80 px-2 py-0.5 rounded-full font-mono text-[10px]">${getDaysRested(b.roastDate)}</span>
+            </div>
+          </div>
+          <button onclick="deleteBean(${b.id})" class="text-zinc-500 hover:text-red-400 p-2 text-sm">🗑️</button>
+        </div>
+      `).join('');
+    }
+
+    async function renderEquipment() {
+      const equip = await getAll('equipment');
+      const list = document.getElementById('equip-list');
+      if (!equip.length) {
+        list.innerHTML = `<div class="text-center py-8 text-zinc-500 text-xs">No equipment recorded yet.</div>`;
+        return;
+      }
+
+      list.innerHTML = equip.map(e => `
+        <div class="bg-zinc-900/60 p-3.5 rounded-xl border border-zinc-800 flex justify-between items-center">
+          <div>
+            <div class="text-sm font-bold text-zinc-100">${escapeHtml(e.name)}</div>
+            <span class="inline-block mt-1 text-[10px] font-mono px-2 py-0.5 rounded-full bg-zinc-800 text-zinc-400">${e.type}</span>
+          </div>
+          <button onclick="deleteEquipment(${e.id})" class="text-zinc-500 hover:text-red-400 p-2 text-sm">🗑️</button>
+        </div>
+      `).join('');
+    }
+
+    async function renderHistory() {
+      const brews = await getAll('brews');
+      const list = document.getElementById('history-list');
+      const countLabel = document.getElementById('history-count');
+      const searchTerm = document.getElementById('search-history').value.toLowerCase();
+
+      // Sort newest first
+      brews.sort((a, b) => new Date(b.timestamp) - new Date(a.timestamp));
+
+      const filtered = brews.filter(b => 
+        (b.bean && b.bean.toLowerCase().includes(searchTerm)) ||
+        (b.brewer && b.brewer.toLowerCase().includes(searchTerm)) ||
+        (b.notes && b.notes.toLowerCase().includes(searchTerm))
+      );
+
+      countLabel.textContent = `${filtered.length} log${filtered.length === 1 ? '' : 's'}`;
+
+      if (!filtered.length) {
+        list.innerHTML = `<div class="text-center py-8 text-zinc-500 text-xs">No brew history found.</div>`;
+        return;
+      }
+
+      list.innerHTML = filtered.map(b => `
+        <div class="bg-zinc-900/60 p-4 rounded-xl border border-zinc-800 space-y-2">
+          <div class="flex justify-between items-start">
+            <div>
+              <div class="text-xs font-semibold text-brand-500">${escapeHtml(b.bean)}</div>
+              <div class="text-xs text-zinc-400">${escapeHtml(b.brewer)} ${b.grinder !== 'None' ? ' • ' + escapeHtml(b.grinder) : ''}</div>
+            </div>
+            <div class="text-amber-400 text-xs font-mono tracking-widest">${'★'.repeat(b.rating)}${'☆'.repeat(5 - b.rating)}</div>
+          </div>
+
+          <div class="grid grid-cols-4 gap-2 bg-zinc-950/50 p-2 rounded-lg text-center font-mono text-xs">
+            <div><span class="block text-[9px] text-zinc-500">DOSE</span>${b.dose}g</div>
+            <div><span class="block text-[9px] text-zinc-500">WATER</span>${b.water}g</div>
+            <div><span class="block text-[9px] text-zinc-500">RATIO</span>1:${(b.water / b.dose).toFixed(1)}</div>
+            <div><span class="block text-[9px] text-zinc-500">GRIND</span>${escapeHtml(b.grind || '-')}</div>
+          </div>
+
+          ${b.notes ? `<p class="text-xs text-zinc-300 italic bg-zinc-800/30 p-2 rounded">${escapeHtml(b.notes)}</p>` : ''}
+
+          <div class="flex justify-between items-center text-[10px] text-zinc-500 pt-1">
+            <span>${new Date(b.timestamp).toLocaleString([], { dateStyle: 'short', timeStyle: 'short' })}</span>
+            <button onclick="deleteBrew(${b.id})" class="text-zinc-500 hover:text-red-400">Delete</button>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    async function refreshAllViews() {
+      await populateFormDropdowns();
+      await renderBeans();
+      await renderEquipment();
+      await renderHistory();
+    }
+
+    // --- Global Actions ---
+    async function deleteBean(id) {
+      if (confirm('Delete this bean entry?')) {
+        await deleteRecord('beans', id);
+        refreshAllViews();
+      }
+    }
+
+    async function deleteEquipment(id) {
+      if (confirm('Delete this equipment entry?')) {
+        await deleteRecord('equipment', id);
+        refreshAllViews();
+      }
+    }
+
+    async function deleteBrew(id) {
+      if (confirm('Delete this brew log?')) {
+        await deleteRecord('brews', id);
+        refreshAllViews();
+      }
+    }
+
+    function escapeHtml(str) {
+      if (!str) return '';
+      return str.replace(/[&<>"']/g, m => ({
+        '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#039;'
+      })[m]);
+    }
+
+    // --- Event Listeners & Forms ---
+    document.getElementById('form-brew').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const newBrew = {
+        bean: document.getElementById('brew-bean').value,
+        brewer: document.getElementById('brew-brewer').value,
+        grinder: document.getElementById('brew-grinder').value,
+        dose: parseFloat(document.getElementById('brew-dose').value),
+        water: parseFloat(document.getElementById('brew-water').value),
+        grind: document.getElementById('brew-grind').value,
+        temp: document.getElementById('brew-temp').value,
+        rating: parseInt(document.getElementById('brew-rating').value) || 0,
+        notes: document.getElementById('brew-notes').value,
+        timestamp: new Date().toISOString()
+      };
+
+      await addRecord('brews', newBrew);
+      alert('Brew Log Saved!');
+      
+      // Reset non-essential fields
+      document.getElementById('brew-notes').value = '';
+      setRating(0);
+      
+      // Switch to history tab
+      document.querySelector('[data-tab="tab-history"]').click();
+    });
+
+    // Bean form handlers
+    document.getElementById('btn-toggle-bean-form').addEventListener('click', () => {
+      document.getElementById('form-bean').classList.toggle('hidden');
+    });
+    document.getElementById('btn-cancel-bean').addEventListener('click', () => {
+      document.getElementById('form-bean').classList.add('hidden');
+    });
+
+    document.getElementById('form-bean').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const bean = {
+        roaster: document.getElementById('bean-roaster').value,
+        name: document.getElementById('bean-name').value,
+        roastDate: document.getElementById('bean-roast-date').value
+      };
+      await addRecord('beans', bean);
+      document.getElementById('form-bean').reset();
+      document.getElementById('form-bean').classList.add('hidden');
+      refreshAllViews();
+    });
+
+    // Equipment form handlers
+    document.getElementById('btn-toggle-equip-form').addEventListener('click', () => {
+      document.getElementById('form-equip').classList.toggle('hidden');
+    });
+    document.getElementById('btn-cancel-equip').addEventListener('click', () => {
+      document.getElementById('form-equip').classList.add('hidden');
+    });
+
+    document.getElementById('form-equip').addEventListener('submit', async (e) => {
+      e.preventDefault();
+      const equip = {
+        name: document.getElementById('equip-name').value,
+        type: document.getElementById('equip-type').value
+      };
+      await addRecord('equipment', equip);
+      document.getElementById('form-equip').reset();
+      document.getElementById('form-equip').classList.add('hidden');
+      refreshAllViews();
+    });
+
+    // History Search
+    document.getElementById('search-history').addEventListener('input', renderHistory);
+
+    // --- JSON Export & Import ---
+    document.getElementById('btn-export').addEventListener('click', async () => {
+      const data = {
+        beans: await getAll('beans'),
+        equipment: await getAll('equipment'),
+        brews: await getAll('brews'),
+        exportDate: new Date().toISOString()
+      };
+
+      const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = `brewlog_backup_${new Date().toISOString().slice(0, 10)}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+    });
+
+    document.getElementById('btn-import-trigger').addEventListener('click', () => {
+      document.getElementById('import-file').click();
+    });
+
+    document.getElementById('import-file').addEventListener('change', (e) => {
+      const file = e.target.files[0];
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = async (event) => {
+        try {
+          const imported = JSON.parse(event.target.result);
+          if (confirm('Importing backup will replace current local data. Continue?')) {
+            await clearStore('beans');
+            await clearStore('equipment');
+            await clearStore('brews');
+
+            if (imported.beans) for (let item of imported.beans) { delete item.id; await addRecord('beans', item); }
+            if (imported.equipment) for (let item of imported.equipment) { delete item.id; await addRecord('equipment', item); }
+            if (imported.brews) for (let item of imported.brews) { delete item.id; await addRecord('brews', item); }
+
+            alert('Backup restored successfully!');
+            refreshAllViews();
+          }
+        } catch (err) {
+          alert('Failed to parse backup JSON file.');
+        }
+      };
+      reader.readAsText(file);
+    });
+
+    // --- Initializer ---
+    window.addEventListener('DOMContentLoaded', async () => {
+      document.getElementById('current-date-display').textContent = new Date().toLocaleDateString(undefined, { weekday: 'short', month: 'short', day: 'numeric' });
+      await initDB();
+      
+      // Default initial seeds if DB is empty
+      const beans = await getAll('beans');
+      if (!beans.length) {
+        await addRecord('beans', { roaster: 'Default Roaster', name: 'House Blend', roastDate: new Date().toISOString().slice(0, 10) });
+      }
+      const equip = await getAll('equipment');
+      if (!equip.length) {
+        await addRecord('equipment', { name: 'V60 Pour Over', type: 'Brewer' });
+        await addRecord('equipment', { name: 'Hand Grinder', type: 'Grinder' });
+      }
+
+      refreshAllViews();
+    });
+  </script>
+</body>
+</html>
