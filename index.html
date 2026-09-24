@@ -33,7 +33,7 @@
   </script>
   <style>
     body { user-select: none; -webkit-tap-highlight-color: transparent; }
-    input, select, textarea { font-size: 16px !important; } /* Prevents mobile zoom on focus */
+    input, select, textarea { font-size: 16px !important; }
   </style>
 </head>
 <body class="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col font-sans antialiased pb-20">
@@ -80,20 +80,19 @@
           </select>
         </div>
 
+        <!-- Dynamic Gear Selection Dropdowns -->
         <div class="grid grid-cols-2 gap-3">
           <div>
             <label class="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Brewer</label>
-            <select id="brew-equipment" class="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-zinc-100 focus:border-amber-500 focus:outline-none">
-              <option value="V60 Pour Over">V60 Pour Over</option>
-              <option value="AeroPress">AeroPress</option>
-              <option value="Timemore Crystal Eye">Timemore Crystal Eye</option>
-              <option value="French Press">French Press</option>
-              <option value="Espresso">Espresso</option>
+            <select id="brew-equipment" class="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-zinc-100 focus:border-amber-500 focus:outline-none" required>
+              <option value="">Select Brewer...</option>
             </select>
           </div>
           <div>
             <label class="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Grinder</label>
-            <input type="text" id="brew-grinder" placeholder="e.g. Timemore C3S" class="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-zinc-100 focus:border-amber-500 focus:outline-none">
+            <select id="brew-grinder" class="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-zinc-100 focus:border-amber-500 focus:outline-none" required>
+              <option value="">Select Grinder...</option>
+            </select>
           </div>
         </div>
 
@@ -242,8 +241,8 @@
       <form id="form-gear" class="space-y-3 bg-zinc-900 border border-zinc-800 rounded-lg p-4">
         <input type="text" id="gear-name" placeholder="Equipment Name (e.g. Timemore C3S)" class="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-xs" required>
         <select id="gear-type" class="w-full bg-zinc-950 border border-zinc-800 rounded p-2 text-xs">
-          <option value="Grinder">Grinder</option>
           <option value="Brewer">Brewer</option>
+          <option value="Grinder">Grinder</option>
           <option value="Kettle">Kettle</option>
           <option value="Scale">Scale</option>
           <option value="Filter">Filter Paper / Accessory</option>
@@ -310,7 +309,7 @@
       db = e.target.result;
       document.getElementById('db-status').innerText = 'IndexedDB Ready';
       seedDefaultsIfEmpty();
-      loadBeansDropdown();
+      loadFormDropdowns();
       renderBeans();
       renderGear();
       renderHistory();
@@ -395,11 +394,12 @@
 
     // --- Seed Default Data ---
     function seedDefaultsIfEmpty() {
-      const tx = db.transaction(['beans'], 'readonly');
-      const store = tx.objectStore('beans');
-      const countReq = store.count();
-      countReq.onsuccess = () => {
-        if (countReq.result === 0) {
+      const tx = db.transaction(['beans', 'gear'], 'readonly');
+      const countBeans = tx.objectStore('beans').count();
+      const countGear = tx.objectStore('gear').count();
+
+      countGear.onsuccess = () => {
+        if (countGear.result === 0) {
           const addTx = db.transaction(['beans', 'gear'], 'readwrite');
           addTx.objectStore('beans').add({
             name: 'House Blend',
@@ -407,8 +407,10 @@
             roastDate: new Date().toISOString().split('T')[0],
             roastLevel: 'Medium'
           });
-          addTx.objectStore('gear').add({ name: 'V60 Dripper', type: 'Brewer' });
-          addTx.objectStore('gear').add({ name: 'Manual Grinder', type: 'Grinder' });
+          addTx.objectStore('gear').add({ name: 'V60 Pour Over', type: 'Brewer' });
+          addTx.objectStore('gear').add({ name: 'AeroPress', type: 'Brewer' });
+          addTx.objectStore('gear').add({ name: 'Timemore Crystal Eye', type: 'Brewer' });
+          addTx.objectStore('gear').add({ name: 'Timemore C3S', type: 'Grinder' });
         }
       };
     }
@@ -423,14 +425,50 @@
         const activeTab = btn.getAttribute('data-tab');
         document.getElementById(activeTab).classList.remove('hidden');
 
-        if (activeTab === 'view-brew') loadBeansDropdown();
+        if (activeTab === 'view-brew') loadFormDropdowns();
         if (activeTab === 'view-history') renderHistory();
         if (activeTab === 'view-beans') renderBeans();
         if (activeTab === 'view-gear') renderGear();
       });
     });
 
-    // --- Dynamic Ratio Calculation (Supports Hot & Iced Liquid Split) ---
+    // --- Populate Form Dropdowns (Beans, Brewers, Grinders) ---
+    function loadFormDropdowns() {
+      const tx = db.transaction(['beans', 'gear'], 'readonly');
+
+      // Populate Beans
+      tx.objectStore('beans').getAll().onsuccess = (e) => {
+        const select = document.getElementById('brew-bean');
+        const currentVal = select.value;
+        select.innerHTML = '<option value="">Select Bean...</option>';
+        e.target.result.forEach(bean => {
+          const nameStr = `${bean.name} (${bean.roaster})`;
+          select.innerHTML += `<option value="${nameStr}" ${currentVal === nameStr ? 'selected' : ''}>${bean.name} - ${bean.roaster}</option>`;
+        });
+      };
+
+      // Populate Gear (Brewers & Grinders)
+      tx.objectStore('gear').getAll().onsuccess = (e) => {
+        const brewerSelect = document.getElementById('brew-equipment');
+        const grinderSelect = document.getElementById('brew-grinder');
+
+        const currentBrewer = brewerSelect.value;
+        const currentGrinder = grinderSelect.value;
+
+        brewerSelect.innerHTML = '<option value="">Select Brewer...</option>';
+        grinderSelect.innerHTML = '<option value="">Select Grinder...</option>';
+
+        e.target.result.forEach(item => {
+          if (item.type === 'Brewer') {
+            brewerSelect.innerHTML += `<option value="${item.name}" ${currentBrewer === item.name ? 'selected' : ''}>${item.name}</option>`;
+          } else if (item.type === 'Grinder') {
+            grinderSelect.innerHTML += `<option value="${item.name}" ${currentGrinder === item.name ? 'selected' : ''}>${item.name}</option>`;
+          }
+        });
+      };
+    }
+
+    // --- Dynamic Ratio Calculation ---
     const doseInput = document.getElementById('brew-dose');
     const ratioDisplay = document.getElementById('brew-ratio-display');
 
@@ -467,19 +505,6 @@
     });
 
     // --- Beans Operations ---
-    function loadBeansDropdown() {
-      const tx = db.transaction('beans', 'readonly');
-      const store = tx.objectStore('beans');
-      const req = store.getAll();
-      req.onsuccess = () => {
-        const select = document.getElementById('brew-bean');
-        select.innerHTML = '<option value="">Select Bean...</option>';
-        req.result.forEach(bean => {
-          select.innerHTML += `<option value="${bean.name} (${bean.roaster})">${bean.name} - ${bean.roaster}</option>`;
-        });
-      };
-    }
-
     document.getElementById('btn-show-add-bean').addEventListener('click', () => {
       document.getElementById('form-bean').classList.remove('hidden');
     });
@@ -501,6 +526,7 @@
         document.getElementById('form-bean').reset();
         document.getElementById('form-bean').classList.add('hidden');
         renderBeans();
+        loadFormDropdowns();
       };
     });
 
@@ -544,6 +570,7 @@
       tx.oncomplete = () => {
         document.getElementById('form-gear').reset();
         renderGear();
+        loadFormDropdowns();
       };
     });
 
@@ -604,7 +631,8 @@
         poursContainer.innerHTML = '';
         addPourRow(50, 'Bloom', '0:00');
         addPourRow(60, 'Spiral', '0:30');
-        btnHot.click(); // Reset to Hot default
+        btnHot.click();
+        loadFormDropdowns();
         alert('Brew logged successfully!');
       };
     });
@@ -623,7 +651,8 @@
             (b.customName && b.customName.toLowerCase().includes(filterQuery)) ||
             (b.bean && b.bean.toLowerCase().includes(filterQuery)) ||
             (b.notes && b.notes.toLowerCase().includes(filterQuery)) ||
-            (b.equipment && b.equipment.toLowerCase().includes(filterQuery))
+            (b.equipment && b.equipment.toLowerCase().includes(filterQuery)) ||
+            (b.grinder && b.grinder.toLowerCase().includes(filterQuery))
           );
         }
 
@@ -698,7 +727,8 @@
                 <div><span class="text-zinc-500">Liquid:</span> ${liquidDetail}</div>
                 <div><span class="text-zinc-500">Grind:</span> ${brew.grindSize || '-'}</div>
                 <div><span class="text-zinc-500">Temp:</span> ${brew.temp}°C</div>
-                <div><span class="text-zinc-500">Method:</span> ${brew.equipment}</div>
+                <div><span class="text-zinc-500">Brewer:</span> ${brew.equipment || '-'}</div>
+                <div class="col-span-2"><span class="text-zinc-500">Grinder:</span> ${brew.grinder || '-'}</div>
               </div>
 
               ${poursHTML}
@@ -721,8 +751,8 @@
         const tx = db.transaction(storeName, 'readwrite');
         tx.objectStore(storeName).delete(id);
         tx.oncomplete = () => {
-          if (storeName === 'beans') renderBeans();
-          if (storeName === 'gear') renderGear();
+          if (storeName === 'beans') { renderBeans(); loadFormDropdowns(); }
+          if (storeName === 'gear') { renderGear(); loadFormDropdowns(); }
           if (storeName === 'brews') renderHistory();
         };
       }
@@ -766,6 +796,7 @@
             renderBeans();
             renderGear();
             renderHistory();
+            loadFormDropdowns();
           };
         } catch (err) {
           alert('Invalid JSON file format.');
