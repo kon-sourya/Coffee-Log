@@ -7,9 +7,13 @@
   
   <!-- PWA Meta Tags -->
   <meta name="theme-color" content="#09090b">
+  <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="BrewLog">
+
+  <!-- Embedded Web App Manifest for Native Install -->
+  <link rel="manifest" href='data:application/manifest+json,{"name":"BrewLog","short_name":"BrewLog","start_url":".","display":"standalone","background_color":"#09090b","theme_color":"#09090b","icons":[{"src":"data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>☕</text></svg>","sizes":"512x512","type":"image/svg+xml"}]}'>
   
   <!-- Tailwind CSS CDN -->
   <script src="https://cdn.tailwindcss.com"></script>
@@ -29,7 +33,7 @@
   </script>
   <style>
     body { user-select: none; -webkit-tap-highlight-color: transparent; }
-    input, select, textarea { font-size: 16px !important; } /* Prevents iOS/Android zoom on focus */
+    input, select, textarea { font-size: 16px !important; } /* Prevents mobile zoom on focus */
   </style>
 </head>
 <body class="bg-zinc-950 text-zinc-100 min-h-screen flex flex-col font-sans antialiased pb-20">
@@ -52,6 +56,22 @@
     <section id="view-brew" class="space-y-4">
       <h2 class="text-lg font-bold text-amber-400">Log a Brew</h2>
       <form id="form-brew" class="space-y-4">
+
+        <!-- Custom Brew Name -->
+        <div>
+          <label class="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Recipe / Custom Name</label>
+          <input type="text" id="brew-custom-name" placeholder="e.g. Morning Iced V60, Japanese Flash Brew..." class="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-zinc-100 focus:border-amber-500 focus:outline-none">
+        </div>
+
+        <!-- Brew Type Toggle (Hot vs Iced) -->
+        <div>
+          <label class="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Brew Temperature Style</label>
+          <div class="grid grid-cols-2 gap-2 bg-zinc-900 p-1 rounded-lg border border-zinc-800">
+            <button type="button" id="btn-style-hot" class="py-2 text-xs font-bold rounded-md transition-colors bg-amber-600 text-zinc-950">🔥 Hot Brew</button>
+            <button type="button" id="btn-style-iced" class="py-2 text-xs font-bold rounded-md transition-colors text-zinc-400 hover:text-zinc-200">🧊 Iced Brew</button>
+          </div>
+          <input type="hidden" id="brew-style" value="hot">
+        </div>
         
         <div>
           <label class="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Coffee Bean</label>
@@ -77,14 +97,19 @@
           </div>
         </div>
 
-        <div class="grid grid-cols-3 gap-2">
+        <!-- Dynamic Dose & Water Inputs -->
+        <div id="liquid-inputs-container" class="grid grid-cols-3 gap-2">
           <div>
             <label class="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Dose (g)</label>
             <input type="number" step="0.1" id="brew-dose" value="18" class="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-zinc-100 focus:border-amber-500 focus:outline-none" required>
           </div>
-          <div>
+          <div id="field-water-hot">
             <label class="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Water (g)</label>
             <input type="number" step="1" id="brew-water" value="300" class="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-zinc-100 focus:border-amber-500 focus:outline-none" required>
+          </div>
+          <div id="field-ice" class="hidden">
+            <label class="block text-xs font-semibold font-bold text-cyan-400 uppercase tracking-wider mb-1">Ice (g)</label>
+            <input type="number" step="1" id="brew-ice" value="120" class="w-full bg-zinc-900 border border-cyan-900/50 text-cyan-300 rounded-lg p-2.5 focus:border-cyan-400 focus:outline-none">
           </div>
           <div>
             <label class="block text-xs font-semibold text-zinc-400 uppercase tracking-wider mb-1">Ratio</label>
@@ -121,7 +146,6 @@
         <!-- Reflection Section -->
         <fieldset class="border border-zinc-800 rounded-lg p-4 space-y-3 bg-zinc-900/30">
           <legend class="text-xs font-semibold text-zinc-400 uppercase tracking-wider">Reflection</legend>
-          
           <div class="grid grid-cols-2 gap-3 text-xs">
             <div>
               <label class="block text-zinc-400 mb-1">Taste (1-5)</label>
@@ -168,7 +192,7 @@
     <!-- TAB 2: BREW HISTORY -->
     <section id="view-history" class="space-y-4 hidden">
       <h2 class="text-lg font-bold text-amber-400">Brew History</h2>
-      <input type="text" id="search-history" placeholder="Search notes, beans, roaster..." class="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-100 focus:border-amber-500 focus:outline-none">
+      <input type="text" id="search-history" placeholder="Search title, notes, beans, roaster..." class="w-full bg-zinc-900 border border-zinc-800 rounded-lg p-2.5 text-xs text-zinc-100 focus:border-amber-500 focus:outline-none">
       <div id="history-list" class="space-y-3">
         <!-- Rendered Brew Cards -->
       </div>
@@ -296,6 +320,35 @@
       document.getElementById('db-status').innerText = 'DB Error';
     };
 
+    // --- Hot vs Iced Toggle Logic ---
+    const btnHot = document.getElementById('btn-style-hot');
+    const btnIced = document.getElementById('btn-style-iced');
+    const brewStyleInput = document.getElementById('brew-style');
+    const fieldIce = document.getElementById('field-ice');
+    const liquidContainer = document.getElementById('liquid-inputs-container');
+    const waterInput = document.getElementById('brew-water');
+    const iceInput = document.getElementById('brew-ice');
+
+    btnHot.addEventListener('click', () => {
+      brewStyleInput.value = 'hot';
+      btnHot.className = 'py-2 text-xs font-bold rounded-md transition-colors bg-amber-600 text-zinc-950';
+      btnIced.className = 'py-2 text-xs font-bold rounded-md transition-colors text-zinc-400 hover:text-zinc-200';
+      fieldIce.classList.add('hidden');
+      liquidContainer.className = 'grid grid-cols-3 gap-2';
+      waterInput.value = '300';
+      calculateRatio();
+    });
+
+    btnIced.addEventListener('click', () => {
+      brewStyleInput.value = 'iced';
+      btnIced.className = 'py-2 text-xs font-bold rounded-md transition-colors bg-cyan-600 text-zinc-950';
+      btnHot.className = 'py-2 text-xs font-bold rounded-md transition-colors text-zinc-400 hover:text-zinc-200';
+      fieldIce.classList.remove('hidden');
+      liquidContainer.className = 'grid grid-cols-4 gap-2';
+      waterInput.value = '180';
+      calculateRatio();
+    });
+
     // --- Dynamic Pour Row Management ---
     const poursContainer = document.getElementById('pours-container');
     const btnAddPour = document.getElementById('btn-add-pour');
@@ -377,22 +430,26 @@
       });
     });
 
-    // --- Auto Ratio Calculation ---
+    // --- Dynamic Ratio Calculation (Supports Hot & Iced Liquid Split) ---
     const doseInput = document.getElementById('brew-dose');
-    const waterInput = document.getElementById('brew-water');
     const ratioDisplay = document.getElementById('brew-ratio-display');
 
     function calculateRatio() {
       const dose = parseFloat(doseInput.value) || 0;
-      const water = parseFloat(waterInput.value) || 0;
-      if (dose > 0 && water > 0) {
-        ratioDisplay.innerText = `1:${(water / dose).toFixed(1)}`;
+      const hotWater = parseFloat(waterInput.value) || 0;
+      const ice = brewStyleInput.value === 'iced' ? (parseFloat(iceInput.value) || 0) : 0;
+      const totalLiquid = hotWater + ice;
+
+      if (dose > 0 && totalLiquid > 0) {
+        ratioDisplay.innerText = `1:${(totalLiquid / dose).toFixed(1)}`;
       } else {
         ratioDisplay.innerText = '1:--';
       }
     }
+
     doseInput.addEventListener('input', calculateRatio);
     waterInput.addEventListener('input', calculateRatio);
+    iceInput.addEventListener('input', calculateRatio);
 
     // --- Interactive Star Rating ---
     const starsContainer = document.getElementById('rating-stars');
@@ -514,13 +571,21 @@
     // --- Brew Logging & History Operations ---
     document.getElementById('form-brew').addEventListener('submit', (e) => {
       e.preventDefault();
+      const style = brewStyleInput.value;
+      const hotWater = parseFloat(waterInput.value) || 0;
+      const ice = style === 'iced' ? (parseFloat(iceInput.value) || 0) : 0;
+
       const brew = {
         timestamp: new Date().toISOString(),
+        customName: document.getElementById('brew-custom-name').value.trim(),
+        style: style,
         bean: document.getElementById('brew-bean').value,
         equipment: document.getElementById('brew-equipment').value,
         grinder: document.getElementById('brew-grinder').value,
         dose: parseFloat(doseInput.value),
-        water: parseFloat(waterInput.value),
+        water: hotWater,
+        ice: ice,
+        totalLiquid: hotWater + ice,
         ratio: ratioDisplay.innerText,
         grindSize: document.getElementById('brew-grind-size').value,
         temp: document.getElementById('brew-temp').value,
@@ -539,7 +604,7 @@
         poursContainer.innerHTML = '';
         addPourRow(50, 'Bloom', '0:00');
         addPourRow(60, 'Spiral', '0:30');
-        calculateRatio();
+        btnHot.click(); // Reset to Hot default
         alert('Brew logged successfully!');
       };
     });
@@ -555,6 +620,7 @@
         let brews = req.result.reverse();
         if (filterQuery) {
           brews = brews.filter(b => 
+            (b.customName && b.customName.toLowerCase().includes(filterQuery)) ||
             (b.bean && b.bean.toLowerCase().includes(filterQuery)) ||
             (b.notes && b.notes.toLowerCase().includes(filterQuery)) ||
             (b.equipment && b.equipment.toLowerCase().includes(filterQuery))
@@ -573,7 +639,8 @@
 
           const stars = '★'.repeat(brew.rating || 0) + '☆'.repeat(5 - (brew.rating || 0));
           const reflection = brew.reflection || { taste: 0, acidity: 0, sweetness: 0, bitterness: 0 };
-          
+          const isIced = brew.style === 'iced';
+
           const reflectionHTML = `
             <div class="mt-3 pt-3 border-t border-zinc-800/80 space-y-1.5 text-xs">
               <div class="text-zinc-400 font-semibold mb-1">Reflection</div>
@@ -602,12 +669,22 @@
             </div>
           ` : '';
 
+          const liquidDetail = isIced 
+            ? `${brew.water}g hot + ${brew.ice}g ice` 
+            : `${brew.water}g water`;
+
           container.innerHTML += `
             <div class="bg-zinc-900 border border-zinc-800 rounded-lg p-3 space-y-2">
               <div class="flex justify-between items-start">
                 <div>
-                  <div class="text-[10px] text-zinc-500 font-mono">${dateStr}</div>
-                  <div class="font-bold text-amber-400 text-xs mt-0.5">${brew.bean || 'Unknown Bean'}</div>
+                  <div class="flex items-center gap-2">
+                    <span class="text-[10px] text-zinc-500 font-mono">${dateStr}</span>
+                    <span class="text-[10px] px-1.5 py-0.2 rounded font-bold uppercase ${isIced ? 'bg-cyan-950 text-cyan-400 border border-cyan-800' : 'bg-amber-950 text-amber-400 border border-amber-800'}">
+                      ${isIced ? '🧊 Iced' : '🔥 Hot'}
+                    </span>
+                  </div>
+                  ${brew.customName ? `<div class="font-bold text-zinc-100 text-sm mt-1">${brew.customName}</div>` : ''}
+                  <div class="font-semibold text-amber-400 text-xs mt-0.5">${brew.bean || 'Unknown Bean'}</div>
                 </div>
                 <div class="flex items-center gap-2">
                   <span class="text-amber-400 text-xs tracking-widest">${stars}</span>
@@ -615,10 +692,10 @@
                 </div>
               </div>
 
-              <div class="grid grid-cols-3 gap-1 bg-zinc-950 p-2 rounded text-[10px] font-mono text-zinc-300 border border-zinc-800/50">
+              <div class="grid grid-cols-2 gap-1 bg-zinc-950 p-2 rounded text-[10px] font-mono text-zinc-300 border border-zinc-800/50">
                 <div><span class="text-zinc-500">Ratio:</span> ${brew.ratio}</div>
                 <div><span class="text-zinc-500">Dose:</span> ${brew.dose}g</div>
-                <div><span class="text-zinc-500">Water:</span> ${brew.water}g</div>
+                <div><span class="text-zinc-500">Liquid:</span> ${liquidDetail}</div>
                 <div><span class="text-zinc-500">Grind:</span> ${brew.grindSize || '-'}</div>
                 <div><span class="text-zinc-500">Temp:</span> ${brew.temp}°C</div>
                 <div><span class="text-zinc-500">Method:</span> ${brew.equipment}</div>
